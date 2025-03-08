@@ -1,157 +1,157 @@
 # OpenAI JSON Text Transformer
 
-Diese PHP-Bibliothek ermöglicht die Umschreibung von Texten mit Hilfe der OpenAI API im JSON-Modus. Die Bibliothek nutzt einen mehrstufigen Prozess, um aus vorhandenen Texten neue, strukturierte Inhalte zu generieren.
+This PHP library enables the transformation of texts using the OpenAI API in JSON mode. The library uses a multi-stage process to generate new, structured content from existing texts.
 
-## Funktionsweise
+## How It Works
 
-Die Bibliothek führt folgende Schritte durch:
+The library performs the following steps:
 
-1. **Erstellung einer Gliederung (Outline)**: Analysiert den Eingabetext und erstellt eine strukturierte Gliederung.
-2. **Generierung eines Titels**: Erstellt einen passenden Titel basierend auf der Gliederung.
-3. **Generierung einer Einleitung**: Erstellt eine einleitende Zusammenfassung.
-4. **Generierung von Abschnitten**: Erstellt jeden Abschnitt und Unterabschnitt basierend auf der Gliederung.
-5. **Zusammenstellung des Ergebnisses**: Fasst alle generierten Teile zu einem strukturierten JSON-Dokument zusammen.
+1. **Creating an Outline**: Analyzes the input text and creates a structured outline.
+2. **Generating a Title**: Creates a suitable title based on the outline.
+3. **Generating an Introduction**: Creates an introductory summary.
+4. **Generating Sections**: Creates each section and subsection based on the outline.
+5. **Compiling the Result**: Combines all generated parts into a structured JSON document.
 
-## Voraussetzungen
+## Requirements
 
-- PHP 8.2 oder höher
-- cURL-Erweiterung für PHP
-- OpenAI API-Schlüssel
+- PHP 8.2 or higher
+- cURL extension for PHP
+- OpenAI API key
 
 ## Installation
 
-1. Klone oder lade dieses Repository herunter
-2. Kopiere `config.example.php` zu `config.php` und passe die Konfiguration an
-3. Stelle sicher, dass dein OpenAI API-Schlüssel in der Konfigurationsdatei eingetragen ist
+1. Clone or download this repository
+2. Copy `config.example.php` to `config.php` and adjust the configuration
+3. Make sure your OpenAI API key is entered in the configuration file
 
-## Konfiguration
+## Configuration
 
-Die Konfigurationsdatei `config.php` enthält folgende Abschnitte:
+The configuration file `config.php` contains the following sections:
 
-### API-Einstellungen
+### API Settings
 
 ```php
 'api' => [
-    'key' => 'DEIN_OPENAI_API_KEY_HIER', // OpenAI API Schlüssel
-    'model' => 'gpt-4o-mini', // Modell für die Texterzeugung
-    'temperature' => 0.7, // Standard-Temperatur (0.0 - 1.0)
-    'presence_penalty' => 0.0, // Penalty für neue Themen (-2.0 - 2.0)
-    'frequency_penalty' => 0.0, // Penalty für Wiederholungen (-2.0 - 2.0)
-    'max_retries' => 5, // Maximale Anzahl an Wiederholungsversuchen bei Fehlern
-    'retry_delay' => 1, // Wartezeit in Sekunden zwischen Wiederholungsversuchen
+    'key' => 'YOUR_OPENAI_API_KEY_HERE', // OpenAI API key
+    'model' => 'gpt-4o-mini', // Model for text generation
+    'temperature' => 0.7, // Standard temperature (0.0 - 1.0)
+    'presence_penalty' => 0.0, // Penalty for new topics (-2.0 - 2.0)
+    'frequency_penalty' => 0.0, // Penalty for repetitions (-2.0 - 2.0)
+    'max_retries' => 5, // Maximum number of retry attempts for errors
+    'retry_delay' => 1, // Wait time in seconds between retry attempts
 ],
 ```
 
-### Spezifische Temperatureinstellungen
+### Specific Temperature Settings
 
 ```php
 'temperatures' => [
-    'outline' => 0.7,  // Temperatur für die Erstellung der Gliederung
-    'title' => 0.8,    // Temperatur für Titel (höher für kreativere Überschriften)
-    'introduction' => 0.7, // Temperatur für Einleitungen
-    'section' => 0.6,   // Temperatur für Textabschnitte (niedriger für sachlicheren Text)
+    'outline' => 0.7,  // Temperature for creating the outline
+    'title' => 0.8,    // Temperature for titles (higher for more creative headlines)
+    'introduction' => 0.7, // Temperature for introductions
+    'section' => 0.6,   // Temperature for text sections (lower for more factual text)
 ],
 ```
 
-Du kannst diese Temperaturen nach Bedarf anpassen:
-- Höhere Werte (0.8-1.0) sorgen für kreativere, überraschendere Texte
-- Niedrigere Werte (0.2-0.5) sorgen für fokussiertere, deterministischere Texte
-- Mittlere Werte (0.6-0.7) bieten eine gute Balance
+You can adjust these temperatures as needed:
+- Higher values (0.8-1.0) result in more creative, surprising texts
+- Lower values (0.2-0.5) result in more focused, deterministic texts
+- Medium values (0.6-0.7) provide a good balance
 
-### Logging-Einstellungen
+### Logging Settings
 
 ```php
 'logging' => [
-    'enabled' => true, // Logging aktivieren/deaktivieren
-    'path' => __DIR__ . '/logs/api.log', // Pfad zur Logdatei
-    'level' => 'DEBUG', // Log-Level: DEBUG, INFO, WARNING, ERROR
+    'enabled' => true, // Enable/disable logging
+    'path' => __DIR__ . '/logs/api.log', // Path to log file
+    'level' => 'DEBUG', // Log level: DEBUG, INFO, WARNING, ERROR
 ],
 ```
 
 ### Prompts
 
-Die Prompts bestimmen, wie OpenAI die Texte umschreiben soll. Du kannst sie an deine Bedürfnisse anpassen:
+The prompts determine how OpenAI rewrites the texts. You can adjust them to suit your needs:
 
-- `outline`: Prompt für die Erstellung der Gliederung
-- `title`: Prompt für die Erzeugung des Titels
-- `introduction`: Prompt für die Erzeugung der Einleitung
-- `section`: Prompt für die Erzeugung der Abschnitte
+- `outline`: Prompt for creating the outline
+- `title`: Prompt for generating the title
+- `introduction`: Prompt for generating the introduction
+- `section`: Prompt for generating the sections
 
-## Verwendung
+## Usage
 
-Das folgende Beispiel zeigt, wie du die Bibliothek verwenden kannst:
+The following example shows how to use the library:
 
 ```php
-// Lade die erforderlichen Klassen
+// Load the required classes
 use OpenAIJsonTransformer\Utils\ConfigManager;
 use OpenAIJsonTransformer\Utils\Logger;
 use OpenAIJsonTransformer\OpenAI\OpenAIClient;
 use OpenAIJsonTransformer\OpenAI\TextTransformer;
 
-// Initialisiere die Komponenten
+// Initialize the components
 $configManager = new ConfigManager('config.php');
 $logger = new Logger($configManager->getLoggingConfig());
 $openaiClient = new OpenAIClient($configManager->getApiConfig(), $logger);
 $textTransformer = new TextTransformer($openaiClient, $configManager, $logger);
 
-// Lade die Artikel aus einer JSON-Datei
+// Load articles from a JSON file
 $articlesJson = file_get_contents('texte.json');
 $articles = json_decode($articlesJson, true);
 
-// Transformiere die Artikel
+// Transform the articles
 $result = $textTransformer->transformArticles($articles);
 
-// Speichere das Ergebnis
+// Save the result
 file_put_contents('output.json', json_encode($result, JSON_PRETTY_PRINT));
 ```
 
-### Beispielskript
+### Example Script
 
-Im Ordner `examples` findest du ein vollständiges Beispielskript:
+In the `examples` folder you will find a complete example script:
 
 ```bash
 php examples/transform_article.php
 ```
 
-## Eingabeformat
+## Input Format
 
-Die Bibliothek erwartet Artikel im folgenden JSON-Format:
+The library expects articles in the following JSON format:
 
 ```json
 {
   "articles": [
     {
-      "title": "Artikel-Titel",
-      "text": "Artikel-Text..."
+      "title": "Article Title",
+      "text": "Article Text..."
     },
     {
-      "title": "Weiterer Artikel-Titel",
-      "text": "Weiterer Artikel-Text..."
+      "title": "Another Article Title",
+      "text": "Another Article Text..."
     }
   ]
 }
 ```
 
-## Ausgabeformat
+## Output Format
 
-Die Bibliothek erzeugt JSON im folgenden Format:
+The library produces JSON in the following format:
 
 ```json
 {
-  "title": "Generierter Haupttitel",
-  "introduction": "Generierte Einleitung...",
+  "title": "Generated Main Title",
+  "introduction": "Generated Introduction...",
   "sections": [
     {
-      "heading": "Abschnittsüberschrift",
-      "content": "Abschnittsinhalt..."
+      "heading": "Section Heading",
+      "content": "Section Content..."
     },
     {
-      "heading": "Abschnittsüberschrift mit Unterabschnitten",
-      "content": "Abschnittsinhalt...",
+      "heading": "Section Heading with Subsections",
+      "content": "Section Content...",
       "subsections": [
         {
-          "heading": "Unterabschnittsüberschrift",
-          "content": "Unterabschnittsinhalt..."
+          "heading": "Subsection Heading",
+          "content": "Subsection Content..."
         }
       ]
     }
@@ -159,17 +159,21 @@ Die Bibliothek erzeugt JSON im folgenden Format:
 }
 ```
 
-## Fehlerbehandlung
+## Error Handling
 
-Die Bibliothek implementiert eine robuste Fehlerbehandlung mit automatischen Wiederholungsversuchen bei API-Fehlern. Alle Fehler werden in der Logdatei protokolliert.
+The library implements robust error handling with automatic retry attempts for API errors. All errors are logged in the log file.
 
-## Erweiterungen
+## Extensions
 
-Die Bibliothek ist so konzipiert, dass sie leicht erweitert werden kann:
+The library is designed to be easily extended:
 
-- **Weitere LLM-Anbieter**: Die Struktur ermöglicht die Integration weiterer Anbieter wie Anthropic.
-- **Zusätzliche Transformationen**: Das Transformationssystem kann um weitere Textverarbeitungsfunktionen erweitert werden.
+- **Additional LLM Providers**: The structure allows for the integration of other providers such as Anthropic.
+- **Additional Transformations**: The transformation system can be extended with additional text processing functions.
 
-## Lizenz
+## License
 
-Dieses Projekt steht unter der [MIT-Lizenz](LICENSE). 
+This project is licensed under the [MIT License](LICENSE).
+
+## Language
+
+A German version of this documentation is available in [LIESMICH.md](LIESMICH.md). 
