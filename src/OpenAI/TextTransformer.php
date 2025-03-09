@@ -1,282 +1,389 @@
 <?php
-/**
- * TextTransformer-Klasse für die Umschreibung von Texten mit OpenAI
- * 
- * @package OpenAIJsonTransformer
- */
 
 namespace OpenAIJsonTransformer\OpenAI;
 
-use OpenAIJsonTransformer\Utils\Logger;
 use OpenAIJsonTransformer\Utils\ConfigManager;
+use OpenAIJsonTransformer\Utils\Logger;
 
+/**
+ * Klasse für die Transformation von Texten mit OpenAI
+ */
 class TextTransformer {
     /**
-     * OpenAI-Client
-     * 
-     * @var OpenAIClient
+     * @var OpenAIClient OpenAI-Client
      */
-    private $openai;
+    private OpenAIClient $openaiClient;
+
+    /**
+     * @var ConfigManager Konfigurations-Manager
+     */
+    private ConfigManager $configManager;
+
+    /**
+     * @var Logger Logger-Instanz
+     */
+    private Logger $logger;
     
     /**
-     * Logger
-     * 
-     * @var Logger
+     * @var bool Gibt an, ob Fortschrittsinformationen angezeigt werden sollen
      */
-    private $logger;
+    private bool $verbose = true;
     
     /**
-     * Konfigurationsmanager
-     * 
-     * @var ConfigManager
+     * @var bool Gibt an, ob Caching verwendet werden soll
      */
-    private $config;
+    private bool $useCache = false;
+    
+    /**
+     * @var string Pfad zum Cache-Verzeichnis
+     */
+    private string $cachePath = '';
 
     /**
      * Konstruktor
      * 
-     * @param OpenAIClient $openai OpenAI-Client
-     * @param ConfigManager $config Konfigurationsmanager
-     * @param Logger $logger Logger
+     * @param OpenAIClient $openaiClient OpenAI-Client
+     * @param ConfigManager $configManager Konfigurations-Manager
+     * @param Logger $logger Logger-Instanz
+     * @param bool $verbose Gibt an, ob Fortschrittsinformationen angezeigt werden sollen
+     * @param bool $useCache Gibt an, ob Caching verwendet werden soll
+     * @param string $cachePath Pfad zum Cache-Verzeichnis
      */
-    public function __construct(OpenAIClient $openai, ConfigManager $config, Logger $logger) {
-        $this->openai = $openai;
-        $this->config = $config;
+    public function __construct(
+        OpenAIClient $openaiClient,
+        ConfigManager $configManager,
+        Logger $logger,
+        bool $verbose = true,
+        bool $useCache = false,
+        string $cachePath = ''
+    ) {
+        $this->openaiClient = $openaiClient;
+        $this->configManager = $configManager;
         $this->logger = $logger;
-    }
-
-    /**
-     * Transformiert einen Artikel basierend auf einer Gliederung
-     * 
-     * @param array $articles Die Artikel-Daten als Array
-     * @return array|null Das transformierte Artikel-Objekt oder null bei Fehler
-     */
-    public function transformArticles(array $articles): ?array {
-        try {
-            // 1. Outline erstellen
-            $outline = $this->createOutline($articles);
-            if (!$outline) {
-                $this->logger->error('Konnte keine Gliederung (Outline) erstellen');
-                return null;
-            }
-
-            $this->logger->info('Gliederung erstellt', ['title' => $outline['title']]);
-
-            // 2. Titel generieren
-            $title = $this->generateTitle($outline);
-            if (!$title) {
-                $this->logger->error('Konnte keinen Titel generieren');
-                return null;
-            }
-
-            $this->logger->info('Titel generiert', ['title' => $title]);
-
-            // 3. Einleitung generieren
-            $introduction = $this->generateIntroduction($outline);
-            if (!$introduction) {
-                $this->logger->error('Konnte keine Einleitung generieren');
-                return null;
-            }
-
-            $this->logger->info('Einleitung generiert');
-
-            // 4. Abschnitte generieren
-            $sections = $this->generateSections($outline);
-            if (empty($sections)) {
-                $this->logger->error('Konnte keine Abschnitte generieren');
-                return null;
-            }
-
-            $this->logger->info('Abschnitte generiert', ['count' => count($sections)]);
-
-            // 5. Ergebnis zusammensetzen
-            return [
-                'title' => $title,
-                'introduction' => $introduction,
-                'sections' => $sections
-            ];
-        } catch (\Exception $e) {
-            $this->logger->error('Fehler bei der Texttransformation', ['error' => $e->getMessage()]);
-            return null;
-        }
-    }
-
-    /**
-     * Holt die spezifische Temperatur für den angegebenen Generierungstyp
-     * 
-     * @param string $type Der Typ der Generierung (outline, title, introduction, section)
-     * @return float Die zu verwendende Temperatur
-     */
-    private function getTemperature(string $type): float {
-        // Holen aus spezifischen Temperatureinstellungen oder Fallback auf Standard
-        $temperature = $this->config->get('temperatures.' . $type);
-        if ($temperature === null) {
-            $temperature = $this->config->get('api.temperature', 0.7);
-        }
-        return (float)$temperature;
-    }
-
-    /**
-     * Erstellt eine Gliederung (Outline) für die Artikel
-     * 
-     * @param array $articles Die Artikel-Daten
-     * @return array|null Die Gliederung oder null bei Fehler
-     */
-    private function createOutline(array $articles): ?array {
-        $prompt = $this->config->getPrompt('outline');
-        $temperature = $this->getTemperature('outline');
+        $this->verbose = $verbose;
+        $this->useCache = $useCache;
+        $this->cachePath = $cachePath ?: __DIR__ . '/../../cache';
         
-        $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein erfahrener Redakteur, der klar strukturierte Gliederungen erstellt.'],
-            ['role' => 'user', 'content' => $prompt . "\n\n" . json_encode($articles, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+        // Erstelle das Cache-Verzeichnis, falls es noch nicht existiert
+        if ($this->useCache && !is_dir($this->cachePath)) {
+            mkdir($this->cachePath, 0777, true);
+        }
+    }
+    
+    /**
+     * Gibt eine Fortschrittsmeldung aus, wenn der verbose-Modus aktiviert ist
+     * 
+     * @param string $message Die Meldung
+     * @return void
+     */
+    private function showProgress(string $message): void
+    {
+        if ($this->verbose) {
+            $timestamp = "[" . date('H:i:s') . "] ";
+            echo $timestamp . $message . PHP_EOL;
+            if (function_exists('ob_get_level') && ob_get_level() > 0) {
+                ob_flush();
+            }
+            flush();
+        }
+    }
+
+    /**
+     * Transformiert eine Liste von Artikeln
+     * 
+     * @param array $articles Die zu transformierenden Artikel
+     * @return array Die transformierten Artikel
+     */
+    public function transformArticles(array $articles): array {
+        $this->logger->info('Starte Transformation von Artikeln', [
+            'article_count' => count($articles)
+        ]);
+
+        $results = [];
+
+        foreach ($articles as $index => $article) {
+            $this->logger->info("Transformiere Artikel {$index} mit Titel: {$article['title']}");
+            
+            try {
+                // Cache-Schlüssel generieren
+                $cacheKey = $this->getCacheKey($article);
+                $cachedResult = $this->getFromCache($cacheKey);
+                
+                if ($cachedResult !== null) {
+                    $this->showProgress("  Artikel aus Cache geladen: " . $article['title']);
+                    $result = $cachedResult;
+                } else {
+                    $result = $this->transformArticle($article);
+                    // Speichere das Ergebnis im Cache
+                    $this->saveToCache($cacheKey, $result);
+                }
+                
+                $results[] = $result;
+                
+                $this->logger->info("Artikel {$index} erfolgreich transformiert");
+            } catch (\Exception $e) {
+                $this->logger->error("Fehler bei der Transformation von Artikel {$index}", [
+                    'error' => $e->getMessage(),
+                    'article_title' => $article['title']
+                ]);
+                
+                // Füge einen Fehlereintrag hinzu
+                $results[] = [
+                    'error' => true,
+                    'title' => $article['title'],
+                    'message' => $e->getMessage()
+                ];
+            }
+        }
+
+        $this->logger->info('Transformation aller Artikel abgeschlossen', [
+            'success_count' => count(array_filter($results, fn($r) => !isset($r['error']))),
+            'error_count' => count(array_filter($results, fn($r) => isset($r['error'])))
+        ]);
+
+        return $results;
+    }
+
+    /**
+     * Transformiert einen einzelnen Artikel
+     * 
+     * @param array $article Der zu transformierende Artikel
+     * @return array Der transformierte Artikel
+     */
+    private function transformArticle(array $article): array {
+        // Schritt 1: Erstelle eine Gliederung
+        $this->showProgress("  Erstelle Gliederung für Artikel: " . $article['title']);
+        $outline = $this->createOutline($article['text']);
+        $this->logger->debug('Gliederung erstellt', ['outline' => $outline]);
+        $this->showProgress("  ✓ Gliederung erstellt");
+
+        // Schritt 2: Generiere einen Titel
+        $this->showProgress("  Generiere Titel...");
+        $title = $this->generateTitle($outline);
+        $this->logger->debug('Titel generiert', ['title' => $title]);
+        $this->showProgress("  ✓ Titel generiert: " . $title);
+
+        // Schritt 3: Generiere eine Einleitung
+        $this->showProgress("  Generiere Einleitung...");
+        $introduction = $this->generateIntroduction($title, $outline);
+        $this->logger->debug('Einleitung generiert', ['introduction_length' => strlen($introduction)]);
+        $this->showProgress("  ✓ Einleitung generiert (" . strlen($introduction) . " Zeichen)");
+
+        // Schritt 4: Generiere die Abschnitte
+        $this->showProgress("  Generiere Abschnitte...");
+        $sections = $this->generateSections($outline);
+        $this->logger->debug('Abschnitte generiert', ['section_count' => count($sections)]);
+        $this->showProgress("  ✓ " . count($sections) . " Abschnitte generiert");
+
+        // Schritt 5: Stelle das Ergebnis zusammen
+        $this->showProgress("  Erstelle Gesamtergebnis...");
+        $result = [
+            'title' => $title,
+            'introduction' => $introduction,
+            'sections' => $sections
         ];
+        $this->showProgress("  ✓ Transformation abgeschlossen");
         
-        try {
-            $response = $this->openai->sendRequest($messages, ['temperature' => $temperature]);
-            return $this->openai->extractJson($response);
-        } catch (\Exception $e) {
-            $this->logger->error('Fehler beim Erstellen der Gliederung', ['error' => $e->getMessage()]);
-            return null;
-        }
+        return $result;
+    }
+
+    /**
+     * Erstellt eine Gliederung für einen Text
+     * 
+     * @param string $text Der Text
+     * @return array Die Gliederung
+     */
+    private function createOutline(string $text): array {
+        $prompt = $this->configManager->getPrompt('outline');
+        $temperature = $this->configManager->getTemperatures()['outline'];
+
+        $messages = [
+            ['role' => 'system', 'content' => 'Du bist ein Assistent, der Texte analysiert und strukturierte Gliederungen als JSON erstellt. Gib immer ein gültiges JSON-Format zurück.'],
+            ['role' => 'user', 'content' => $prompt . "\n\nText:\n" . $text]
+        ];
+
+        $this->showProgress("    Sende Outline-Anfrage an API (Temperatur: $temperature)...");
+        $response = $this->openaiClient->sendRequest($messages, $temperature);
+        $this->showProgress("    ✓ API-Antwort für Outline erhalten");
+        
+        return $this->openaiClient->extractJsonContent($response);
     }
 
     /**
      * Generiert einen Titel basierend auf der Gliederung
      * 
      * @param array $outline Die Gliederung
-     * @return string|null Der generierte Titel oder null bei Fehler
+     * @return string Der generierte Titel
      */
-    private function generateTitle(array $outline): ?string {
-        $prompt = $this->config->getPrompt('title');
-        $temperature = $this->getTemperature('title');
-        
+    private function generateTitle(array $outline): string {
+        $prompt = $this->configManager->getPrompt('title');
+        $temperature = $this->configManager->getTemperatures()['title'];
+
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein erfahrener Redakteur, der prägnante und ansprechende Titel erstellt.'],
-            ['role' => 'user', 'content' => $prompt . "\n\n" . json_encode($outline, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+            ['role' => 'system', 'content' => 'Du bist ein Assistent, der ansprechende Titel für Artikel erstellt. Antworte im JSON-Format mit einem "title"-Feld.'],
+            ['role' => 'user', 'content' => $prompt . "\n\nGliederung:\n" . json_encode($outline, JSON_UNESCAPED_UNICODE)]
         ];
+
+        $this->showProgress("    Sende Title-Anfrage an API (Temperatur: $temperature)...");
+        $response = $this->openaiClient->sendRequest($messages, $temperature);
+        $this->showProgress("    ✓ API-Antwort für Title erhalten");
         
-        try {
-            $response = $this->openai->sendRequest($messages, ['temperature' => $temperature]);
-            $json = $this->openai->extractJson($response);
-            
-            return $json['title'] ?? null;
-        } catch (\Exception $e) {
-            $this->logger->error('Fehler beim Generieren des Titels', ['error' => $e->getMessage()]);
-            return null;
-        }
+        $result = $this->openaiClient->extractJsonContent($response);
+
+        return $result['title'] ?? 'Kein Titel generiert';
     }
 
     /**
-     * Generiert eine Einleitung basierend auf der Gliederung
+     * Generiert eine Einleitung basierend auf Titel und Gliederung
      * 
+     * @param string $title Der Titel
      * @param array $outline Die Gliederung
-     * @return string|null Die generierte Einleitung oder null bei Fehler
+     * @return string Die generierte Einleitung
      */
-    private function generateIntroduction(array $outline): ?string {
-        $prompt = $this->config->getPrompt('introduction');
-        $temperature = $this->getTemperature('introduction');
-        
+    private function generateIntroduction(string $title, array $outline): string {
+        $prompt = $this->configManager->getPrompt('introduction');
+        $temperature = $this->configManager->getTemperatures()['introduction'];
+
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein erfahrener Redakteur, der fesselnde Einleitungen schreibt.'],
-            ['role' => 'user', 'content' => $prompt . "\n\n" . json_encode($outline, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+            ['role' => 'system', 'content' => 'Du bist ein Assistent, der ansprechende Einleitungen für Artikel erstellt. Antworte im JSON-Format mit einem "introduction"-Feld.'],
+            ['role' => 'user', 'content' => $prompt . "\n\nTitel: " . $title . "\n\nGliederung:\n" . json_encode($outline, JSON_UNESCAPED_UNICODE)]
         ];
+
+        $this->showProgress("    Sende Introduction-Anfrage an API (Temperatur: $temperature)...");
+        $response = $this->openaiClient->sendRequest($messages, $temperature);
+        $this->showProgress("    ✓ API-Antwort für Introduction erhalten");
         
-        try {
-            $response = $this->openai->sendRequest($messages, ['temperature' => $temperature]);
-            $json = $this->openai->extractJson($response);
-            
-            return $json['introduction'] ?? null;
-        } catch (\Exception $e) {
-            $this->logger->error('Fehler beim Generieren der Einleitung', ['error' => $e->getMessage()]);
-            return null;
-        }
+        $result = $this->openaiClient->extractJsonContent($response);
+
+        return $result['introduction'] ?? 'Keine Einleitung generiert';
     }
 
     /**
-     * Generiert alle Abschnitte basierend auf der Gliederung
+     * Generiert die Abschnitte basierend auf der Gliederung
      * 
      * @param array $outline Die Gliederung
-     * @return array|null Die generierten Abschnitte oder null bei Fehler
+     * @return array Die generierten Abschnitte
      */
-    private function generateSections(array $outline): ?array {
-        if (!isset($outline['sections']) || !is_array($outline['sections'])) {
-            return null;
-        }
-        
+    private function generateSections(array $outline): array {
+        $prompt = $this->configManager->getPrompt('section');
+        $temperature = $this->configManager->getTemperatures()['section'];
         $sections = [];
-        $prompt = $this->config->getPrompt('section');
-        
-        foreach ($outline['sections'] as $sectionOutline) {
-            $section = $this->generateSection($sectionOutline, $prompt);
-            
-            if ($section) {
-                $sections[] = $section;
-                
-                // Wenn der Abschnitt Unterabschnitte hat, diese auch generieren
-                if (isset($sectionOutline['subsections']) && is_array($sectionOutline['subsections'])) {
-                    $section['subsections'] = [];
-                    
-                    foreach ($sectionOutline['subsections'] as $subsectionOutline) {
-                        $subsection = $this->generateSection($subsectionOutline, $prompt);
-                        
-                        if ($subsection) {
-                            $section['subsections'][] = $subsection;
-                        }
-                    }
-                }
-            }
+
+        if (!isset($outline['sections']) || !is_array($outline['sections'])) {
+            $this->showProgress("    FEHLER: Ungültiges Outline-Format - 'sections' nicht gefunden oder kein Array");
+            return [];
         }
-        
+
+        foreach ($outline['sections'] as $index => $section) {
+            $sectionNumber = $index + 1;
+            $this->showProgress("    Generiere Abschnitt $sectionNumber/" . count($outline['sections']) . ": " . ($section['heading'] ?? 'Ohne Überschrift'));
+            
+            $section = [
+                'heading' => $section['heading'] ?? 'Ohne Überschrift',
+                'content' => $section['content'] ?? $this->generateSectionContent($section, $prompt, $temperature)
+            ];
+
+            $sections[] = $section;
+        }
+
         return $sections;
     }
 
     /**
-     * Generiert einen einzelnen Abschnitt
+     * Generiert den Inhalt für einen Abschnitt
      * 
-     * @param array $sectionOutline Die Gliederung des Abschnitts
-     * @param string $promptTemplate Der Prompt-Template für Abschnitte
-     * @return array|null Der generierte Abschnitt oder null bei Fehler
+     * @param array $point Der Punkt aus der Gliederung
+     * @param string $prompt Der zu verwendende Prompt
+     * @param float $temperature Die zu verwendende Temperatur
+     * @return string Der generierte Inhalt
      */
-    private function generateSection(array $sectionOutline, string $promptTemplate): ?array {
-        if (!isset($sectionOutline['heading'])) {
+    private function generateSectionContent(array $point, string $prompt, float $temperature): string {
+        $messages = [
+            ['role' => 'system', 'content' => 'Du bist ein Assistent, der informative und gut strukturierte Textabschnitte erstellt. Antworte im JSON-Format mit einem "content"-Feld.'],
+            ['role' => 'user', 'content' => $prompt . "\n\nPunkt:\n" . json_encode($point, JSON_UNESCAPED_UNICODE)]
+        ];
+
+        $this->showProgress("        Sende Section-Content-Anfrage an API (Temperatur: $temperature)...");
+        $response = $this->openaiClient->sendRequest($messages, $temperature);
+        $this->showProgress("        ✓ API-Antwort für Section-Content erhalten");
+        
+        $result = $this->openaiClient->extractJsonContent($response);
+
+        return $result['content'] ?? 'Kein Inhalt generiert';
+    }
+
+    /**
+     * Generiert einen Cache-Schlüssel für einen Artikel
+     * 
+     * @param array $article Der Artikel
+     * @return string Der Cache-Schlüssel
+     */
+    private function getCacheKey(array $article): string
+    {
+        // Verwende MD5-Hash des Artikeltitels und -textes als Schlüssel
+        return md5($article['title'] . '|' . $article['text']);
+    }
+    
+    /**
+     * Lädt ein Ergebnis aus dem Cache
+     * 
+     * @param string $cacheKey Der Cache-Schlüssel
+     * @return array|null Das geladene Ergebnis oder null, wenn es nicht im Cache ist
+     */
+    private function getFromCache(string $cacheKey): ?array
+    {
+        if (!$this->useCache) {
             return null;
         }
         
-        $heading = $sectionOutline['heading'];
-        $summary = $sectionOutline['summary'] ?? 'Keine Zusammenfassung verfügbar';
-        $temperature = $this->getTemperature('section');
+        $cacheFile = $this->cachePath . '/' . $cacheKey . '.json';
         
-        // Platzhalter im Prompt ersetzen
-        $prompt = str_replace(
-            ['{{section_heading}}', '{{section_summary}}'],
-            [$heading, $summary],
-            $promptTemplate
-        );
+        if (!file_exists($cacheFile)) {
+            return null;
+        }
         
-        $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein erfahrener Redakteur, der informative und gut strukturierte Abschnitte schreibt.'],
-            ['role' => 'user', 'content' => $prompt]
-        ];
+        $this->logger->debug('Lade Ergebnis aus Cache', ['cache_key' => $cacheKey]);
         
         try {
-            $response = $this->openai->sendRequest($messages, ['temperature' => $temperature]);
-            $json = $this->openai->extractJson($response);
-            
-            if (isset($json['heading']) && isset($json['content'])) {
-                return [
-                    'heading' => $json['heading'],
-                    'content' => $json['content']
-                ];
-            }
-            
-            return null;
+            $content = file_get_contents($cacheFile);
+            $data = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+            return $data;
         } catch (\Exception $e) {
-            $this->logger->error('Fehler beim Generieren eines Abschnitts', [
-                'heading' => $heading,
+            $this->logger->warning('Fehler beim Laden aus dem Cache', [
+                'cache_key' => $cacheKey,
                 'error' => $e->getMessage()
             ]);
-            
             return null;
+        }
+    }
+    
+    /**
+     * Speichert ein Ergebnis im Cache
+     * 
+     * @param string $cacheKey Der Cache-Schlüssel
+     * @param array $data Die zu speichernden Daten
+     * @return bool Gibt an, ob das Speichern erfolgreich war
+     */
+    private function saveToCache(string $cacheKey, array $data): bool
+    {
+        if (!$this->useCache) {
+            return false;
+        }
+        
+        $cacheFile = $this->cachePath . '/' . $cacheKey . '.json';
+        
+        $this->logger->debug('Speichere Ergebnis im Cache', ['cache_key' => $cacheKey]);
+        
+        try {
+            $content = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            file_put_contents($cacheFile, $content);
+            return true;
+        } catch (\Exception $e) {
+            $this->logger->warning('Fehler beim Speichern im Cache', [
+                'cache_key' => $cacheKey,
+                'error' => $e->getMessage()
+            ]);
+            return false;
         }
     }
 } 
