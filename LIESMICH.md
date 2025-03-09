@@ -58,6 +58,22 @@ Du kannst diese Temperaturen nach Bedarf anpassen:
 - Niedrigere Werte (0.2-0.5) sorgen für fokussiertere, deterministischere Texte
 - Mittlere Werte (0.6-0.7) bieten eine gute Balance
 
+### Systemrollen
+
+```php
+'roles' => [
+    'outline' => 'Du bist ein erfahrener Redakteur, der klar strukturierte Gliederungen erstellt.',
+    'title' => 'Du bist ein erfahrener Redakteur, der prägnante und ansprechende Titel erstellt.',
+    'introduction' => 'Du bist ein erfahrener Redakteur, der fesselnde Einleitungen schreibt.',
+    'section' => 'Du bist ein erfahrener Redakteur, der informative und gut strukturierte Abschnitte schreibt.'
+],
+```
+
+Diese Systemrollen werden dem KI-Modell für jede Anfrage mitgegeben und beeinflussen den Stil und Ton der generierten Texte:
+- Du kannst die Rollen an deine spezifischen Anforderungen anpassen
+- Für technischere Texte könntest du z.B. "Du bist ein technischer Autor, der..." verwenden
+- Für kreativere Texte könnte "Du bist ein kreativer Schriftsteller, der..." passender sein
+
 ### Logging-Einstellungen
 
 ```php

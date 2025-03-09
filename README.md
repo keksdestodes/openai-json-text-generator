@@ -58,6 +58,22 @@ You can adjust these temperatures as needed:
 - Lower values (0.2-0.5) result in more focused, deterministic texts
 - Medium values (0.6-0.7) provide a good balance
 
+### System Roles
+
+```php
+'roles' => [
+    'outline' => 'You are an experienced editor who creates clearly structured outlines.',
+    'title' => 'You are an experienced editor who creates concise and appealing titles.',
+    'introduction' => 'You are an experienced editor who writes captivating introductions.',
+    'section' => 'You are an experienced editor who writes informative and well-structured sections.'
+],
+```
+
+These system roles are provided to the AI model for each request and influence the style and tone of the generated texts:
+- You can adapt the roles to your specific requirements
+- For more technical texts, you could use "You are a technical writer who..." for example
+- For more creative texts, "You are a creative writer who..." might be more appropriate
+
 ### Logging Settings
 
 ```php

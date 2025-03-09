@@ -188,17 +188,44 @@ class TextTransformer {
     }
 
     /**
-     * Erstellt eine Gliederung für einen Text
+     * Holt die Systemrolle für den angegebenen Typ aus der Konfiguration
      * 
-     * @param string $text Der Text
-     * @return array Die Gliederung
+     * @param string $type Der Typ (outline, title, introduction, section)
+     * @return string Die Systemrolle
+     */
+    private function getSystemRole(string $type): string
+    {
+        // Versuche, die Rolle aus der Konfiguration zu laden
+        $role = $this->configManager->getSystemRole($type);
+        
+        // Fallback zu Standard-Rollen, wenn keine konfiguriert ist
+        if (empty($role)) {
+            $defaultRoles = [
+                'outline' => 'Du bist ein Assistent, der Texte analysiert und strukturierte Gliederungen als JSON erstellt. Gib immer ein gültiges JSON-Format zurück.',
+                'title' => 'Du bist ein Assistent, der prägnante und ansprechende Titel basierend auf Textgliederungen erstellt. Gib immer ein gültiges JSON-Format zurück.',
+                'introduction' => 'Du bist ein Assistent, der fesselnde Einleitungen basierend auf Titel und Gliederungen erstellt. Gib immer ein gültiges JSON-Format zurück.',
+                'section' => 'Du bist ein Assistent, der informative und gut strukturierte Textabschnitte erstellt. Gib immer ein gültiges JSON-Format zurück.'
+            ];
+            
+            $role = $defaultRoles[$type] ?? 'Du bist ein hilfreicher Assistent, der strukturierte Texte erstellt. Gib immer ein gültiges JSON-Format zurück.';
+        }
+        
+        return $role;
+    }
+
+    /**
+     * Erstellt eine Gliederung aus dem Text
+     * 
+     * @param string $text Der zu analysierende Text
+     * @return array Die erstellte Gliederung
      */
     private function createOutline(string $text): array {
         $prompt = $this->configManager->getPrompt('outline');
         $temperature = $this->configManager->getTemperatures()['outline'];
+        $systemRole = $this->getSystemRole('outline');
 
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein Assistent, der Texte analysiert und strukturierte Gliederungen als JSON erstellt. Gib immer ein gültiges JSON-Format zurück.'],
+            ['role' => 'system', 'content' => $systemRole],
             ['role' => 'user', 'content' => $prompt . "\n\nText:\n" . $text]
         ];
 
@@ -218,23 +245,25 @@ class TextTransformer {
     private function generateTitle(array $outline): string {
         $prompt = $this->configManager->getPrompt('title');
         $temperature = $this->configManager->getTemperatures()['title'];
+        $systemRole = $this->getSystemRole('title');
+
+        $outlineJson = json_encode($outline, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein Assistent, der ansprechende Titel für Artikel erstellt. Antworte im JSON-Format mit einem "title"-Feld.'],
-            ['role' => 'user', 'content' => $prompt . "\n\nGliederung:\n" . json_encode($outline, JSON_UNESCAPED_UNICODE)]
+            ['role' => 'system', 'content' => $systemRole],
+            ['role' => 'user', 'content' => $prompt . "\n\nGliederung:\n" . $outlineJson]
         ];
 
-        $this->showProgress("    Sende Title-Anfrage an API (Temperatur: $temperature)...");
+        $this->showProgress("    Sende Titel-Anfrage an API (Temperatur: $temperature)...");
         $response = $this->openaiClient->sendRequest($messages, $temperature);
-        $this->showProgress("    ✓ API-Antwort für Title erhalten");
+        $this->showProgress("    ✓ API-Antwort für Titel erhalten");
         
         $result = $this->openaiClient->extractJsonContent($response);
-
-        return $result['title'] ?? 'Kein Titel generiert';
+        return $result['title'];
     }
 
     /**
-     * Generiert eine Einleitung basierend auf Titel und Gliederung
+     * Generiert eine Einleitung basierend auf dem Titel und der Gliederung
      * 
      * @param string $title Der Titel
      * @param array $outline Die Gliederung
@@ -243,19 +272,21 @@ class TextTransformer {
     private function generateIntroduction(string $title, array $outline): string {
         $prompt = $this->configManager->getPrompt('introduction');
         $temperature = $this->configManager->getTemperatures()['introduction'];
+        $systemRole = $this->getSystemRole('introduction');
+
+        $outlineJson = json_encode($outline, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein Assistent, der ansprechende Einleitungen für Artikel erstellt. Antworte im JSON-Format mit einem "introduction"-Feld.'],
-            ['role' => 'user', 'content' => $prompt . "\n\nTitel: " . $title . "\n\nGliederung:\n" . json_encode($outline, JSON_UNESCAPED_UNICODE)]
+            ['role' => 'system', 'content' => $systemRole],
+            ['role' => 'user', 'content' => $prompt . "\n\nTitel: " . $title . "\n\nGliederung:\n" . $outlineJson]
         ];
 
-        $this->showProgress("    Sende Introduction-Anfrage an API (Temperatur: $temperature)...");
+        $this->showProgress("    Sende Einleitungs-Anfrage an API (Temperatur: $temperature)...");
         $response = $this->openaiClient->sendRequest($messages, $temperature);
-        $this->showProgress("    ✓ API-Antwort für Introduction erhalten");
+        $this->showProgress("    ✓ API-Antwort für Einleitung erhalten");
         
         $result = $this->openaiClient->extractJsonContent($response);
-
-        return $result['introduction'] ?? 'Keine Einleitung generiert';
+        return $result['introduction'];
     }
 
     /**
@@ -290,26 +321,29 @@ class TextTransformer {
     }
 
     /**
-     * Generiert den Inhalt für einen Abschnitt
+     * Generiert den Inhalt eines Abschnitts
      * 
-     * @param array $point Der Punkt aus der Gliederung
+     * @param array $point Der Gliederungspunkt
      * @param string $prompt Der zu verwendende Prompt
      * @param float $temperature Die zu verwendende Temperatur
      * @return string Der generierte Inhalt
      */
     private function generateSectionContent(array $point, string $prompt, float $temperature): string {
+        $systemRole = $this->getSystemRole('section');
+        
+        $pointJson = json_encode($point, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein Assistent, der informative und gut strukturierte Textabschnitte erstellt. Antworte im JSON-Format mit einem "content"-Feld.'],
-            ['role' => 'user', 'content' => $prompt . "\n\nPunkt:\n" . json_encode($point, JSON_UNESCAPED_UNICODE)]
+            ['role' => 'system', 'content' => $systemRole],
+            ['role' => 'user', 'content' => $prompt . "\n\nGliederungspunkt:\n" . $pointJson]
         ];
-
-        $this->showProgress("        Sende Section-Content-Anfrage an API (Temperatur: $temperature)...");
+        
+        $this->showProgress("      Sende Abschnitts-Anfrage an API (Temperatur: $temperature)...");
         $response = $this->openaiClient->sendRequest($messages, $temperature);
-        $this->showProgress("        ✓ API-Antwort für Section-Content erhalten");
+        $this->showProgress("      ✓ API-Antwort für Abschnitt erhalten");
         
         $result = $this->openaiClient->extractJsonContent($response);
-
-        return $result['content'] ?? 'Kein Inhalt generiert';
+        return $result['content'];
     }
 
     /**

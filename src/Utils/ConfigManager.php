@@ -112,6 +112,30 @@ class ConfigManager {
     }
 
     /**
+     * Gibt die Temperatureinstellungen zurück
+     * 
+     * @return array
+     */
+    public function getTemperatures(): array {
+        return $this->config['temperatures'] ?? [
+            'outline' => 0.7,
+            'title' => 0.8,
+            'introduction' => 0.7,
+            'section' => 0.6
+        ];
+    }
+
+    /**
+     * Gibt eine Systemrolle für den angegebenen Typ zurück
+     * 
+     * @param string $type Der Typ (outline, title, introduction, section)
+     * @return string|null Die entsprechende Systemrolle oder null wenn nicht definiert
+     */
+    public function getSystemRole(string $type): ?string {
+        return $this->config['roles'][$type] ?? null;
+    }
+
+    /**
      * Gibt einen bestimmten Prompt zurück
      * 
      * @param string $promptName Name des Prompts

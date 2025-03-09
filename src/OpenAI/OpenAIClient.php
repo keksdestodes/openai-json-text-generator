@@ -78,11 +78,16 @@ class OpenAIClient {
      * Sendet eine Anfrage an die OpenAI API
      * 
      * @param array $messages Die Nachrichten (Konversation) für die API
-     * @param array $options Zusätzliche Optionen für die API
+     * @param array|float $options Zusätzliche Optionen für die API oder nur die Temperatur als Float
      * @return array|null Die API-Antwort als Array oder null bei Fehler
      * @throws \Exception wenn die API-Anfrage nach allen Wiederholungsversuchen fehlschlägt
      */
-    public function sendRequest(array $messages, array $options = []): ?array {
+    public function sendRequest(array $messages, $options = []): ?array {
+        // Behandlung von $options als Float (Temperatur)
+        if (is_float($options) || is_int($options)) {
+            $options = ['temperature' => (float)$options];
+        }
+
         $payload = [
             'model' => $this->model,
             'messages' => $messages,
@@ -236,5 +241,15 @@ class OpenAIClient {
         }
         
         return $json;
+    }
+
+    /**
+     * Alias für extractJson - extrahiert den JSON-Inhalt aus der API-Antwort
+     * 
+     * @param array $response Die API-Antwort
+     * @return array|null Das extrahierte JSON oder null bei Fehler
+     */
+    public function extractJsonContent(array $response): ?array {
+        return $this->extractJson($response);
     }
 } 
